@@ -44,7 +44,7 @@ async function saveHistory(sessionId, userMessage, botReply) {
             });
         } else {
             // If it exists, append the new message to the existing array.
-            // Using arrayUnion ensures we add to the array atomically without overwriting it.
+            // We'll create the timestamp and then add the whole object to the array.
             newEntry.timestamp = admin.firestore.FieldValue.serverTimestamp();
             transaction.update(docRef, { 
                 messages: admin.firestore.FieldValue.arrayUnion(newEntry)
