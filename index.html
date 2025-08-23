@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot</title>
+    <!-- Use Tailwind CSS for a modern, responsive design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .chat-message.user {
+            background-color: #d1fae5; /* Green for user messages */
+        }
+        .chat-message.bot {
+            background-color: #e5e7eb; /* Gray for bot messages */
+        }
+        /* Custom scrollbar for chat window */
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 md:p-8">
+
+    <!-- Main Chatbot Container -->
+    <div class="flex flex-col w-full max-w-2xl h-[80vh] bg-white rounded-xl shadow-lg overflow-hidden">
+
+        <!-- Chat Header -->
+        <div class="bg-gray-800 text-white p-4 rounded-t-xl text-center font-bold text-lg">
+            Gemini Chatbot
+        </div>
+
+        <!-- Chat Messages Container -->
+        <div id="chat-container" class="flex-1 p-4 overflow-y-auto chat-container space-y-4">
+            <!-- Initial welcome message -->
+            <div class="chat-message bot p-3 rounded-xl shadow-sm self-start">
+                <p>Hello! How can I help you today?</p>
+            </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chat-form" class="p-4 bg-gray-100 flex items-center border-t border-gray-200">
+            <input type="text" id="user-input" placeholder="Type your message..." class="flex-1 p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-indigo-500 transition-colors duration-200">
+            <button type="submit" id="send-button" class="ml-4 p-3 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                Send
+            </button>
+        </form>
+
+    </div>
+
+    <!-- Message Box for Alerts -->
+    <div id="message-box" class="hidden message-box">
+        <p id="message-text" class="text-gray-800 text-lg font-medium mb-4"></p>
+        <button id="message-close-button" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Close</button>
+    </div>
+
+    <script>
+        // Function to show a custom message box instead of alert()
+        function showMessageBox(message) {
+            const messageBox = document.getElementById('message-box');
+            const messageText = document.getElementById('message-text');
+            const messageCloseButton = document.getElementById('message-close-button');
+
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+
+            messageCloseButton.onclick = () => {
+                messageBox.classList.add('hidden');
+            };
+        }
+
+        const chatForm = document.getElementById('chat-form');
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+
+        // Function to append a new message to the chat container
+        function appendMessage(sender, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', sender, 'p-3', 'rounded-xl', 'shadow-sm', 'max-w-[85%]');
+            
+            // Align message to the correct side
+            if (sender === 'user') {
+                messageDiv.classList.add('ml-auto', 'self-end', 'text-right');
+            } else {
+                messageDiv.classList.add('mr-auto', 'self-start');
+            }
+
+            // Create a paragraph for the message content
+            const p = document.createElement('p');
+            p.textContent = message;
+            messageDiv.appendChild(p);
+
+            chatContainer.appendChild(messageDiv);
+
+            // Auto-scroll to the bottom of the chat
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userMessage = userInput.value.trim();
+            if (userMessage === '') {
+                return;
+            }
+
+            // Append user message to the chat
+            appendMessage('user', userMessage);
+            userInput.value = '';
+
+            // Show a "typing" indicator for the bot
+            const typingIndicator = document.createElement('div');
+            typingIndicator.id = 'typing-indicator';
+            typingIndicator.textContent = 'Typing...';
+            typingIndicator.classList.add('chat-message', 'bot', 'p-3', 'rounded-xl', 'shadow-sm', 'self-start', 'mr-auto');
+            chatContainer.appendChild(typingIndicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            sendButton.disabled = true;
+
+            try {
+                // Call the Netlify serverless function
+                const response = await fetch('/.netlify/functions/chatbot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: userMessage }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Remove the typing indicator
+                document.getElementById('typing-indicator')?.remove();
+
+                // Append the bot's response
+                appendMessage('bot', data.reply);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                document.getElementById('typing-indicator')?.remove();
+                showMessageBox('Sorry, there was an error. Please try again later.');
+            } finally {
+                sendButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
