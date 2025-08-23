@@ -101,6 +101,13 @@
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
 
+        // Get or create a unique session ID to track conversation history
+        let sessionId = localStorage.getItem('sessionId');
+        if (!sessionId) {
+            sessionId = crypto.randomUUID();
+            localStorage.setItem('sessionId', sessionId);
+        }
+
         // Function to append a new message to the chat container
         function appendMessage(sender, message) {
             const messageDiv = document.createElement('div');
@@ -146,13 +153,13 @@
             sendButton.disabled = true;
 
             try {
-                // Call the Netlify serverless function
+                // Call the Netlify serverless function, sending the session ID
                 const response = await fetch('/.netlify/functions/chatbot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: userMessage }),
+                    body: JSON.stringify({ message: userMessage, sessionId: sessionId }),
                 });
 
                 if (!response.ok) {
