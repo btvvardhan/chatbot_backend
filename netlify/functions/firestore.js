@@ -32,23 +32,20 @@ async function saveHistory(sessionId, userMessage, botReply) {
 
         const newEntry = {
             user: userMessage,
-            bot: botReply
+            bot: botReply,
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
         };
-
+        
+        // This is the correct way to handle the array update to avoid the Firestore error.
+        // We get the existing messages, add the new one, and then set the entire array.
         if (!doc.exists) {
-            // If the document doesn't exist, create it with the first message
-            // Note: We use a simple timestamp here because serverTimestamp() isn't allowed in an array during a set operation.
-            newEntry.timestamp = admin.firestore.Timestamp.now();
             transaction.set(docRef, {
                 messages: [newEntry]
             });
         } else {
-            // If it exists, append the new message to the existing array.
-            // We'll create the timestamp and then add the whole object to the array.
-            newEntry.timestamp = admin.firestore.FieldValue.serverTimestamp();
-            transaction.update(docRef, { 
-                messages: admin.firestore.FieldValue.arrayUnion(newEntry)
-            });
+            const messages = doc.data().messages || [];
+            messages.push(newEntry);
+            transaction.update(docRef, { messages: messages });
         }
     });
 }
