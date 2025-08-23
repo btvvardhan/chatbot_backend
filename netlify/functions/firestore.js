@@ -26,28 +26,29 @@ const db = admin.firestore();
 async function saveHistory(sessionId, userMessage, botReply) {
     const docRef = db.collection('chat_history').doc(sessionId);
     
-    // Use a transaction to safely get and update the document
-    return db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(docRef);
+    // We get the document first to check if it exists
+    const doc = await docRef.get();
 
-        const newEntry = {
-            user: userMessage,
-            bot: botReply,
-            timestamp: admin.firestore.FieldValue.serverTimestamp()
-        };
-        
-        // This is the correct way to handle the array update to avoid the Firestore error.
-        // We get the existing messages, add the new one, and then set the entire array.
-        if (!doc.exists) {
-            transaction.set(docRef, {
-                messages: [newEntry]
-            });
-        } else {
-            const messages = doc.data().messages || [];
-            messages.push(newEntry);
-            transaction.update(docRef, { messages: messages });
-        }
-    });
+    const newEntry = {
+        user: userMessage,
+        bot: botReply,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    // Check if the document exists to determine whether to set or update
+    if (!doc.exists) {
+        // If the document doesn't exist, create it with the first message.
+        // The transaction is handled by the set operation implicitly.
+        await docRef.set({
+            messages: [newEntry]
+        });
+    } else {
+        // If it exists, update it by atomically adding the new entry to the messages array.
+        // This is the correct use of FieldValue.arrayUnion() with serverTimestamp().
+        await docRef.update({
+            messages: admin.firestore.FieldValue.arrayUnion(newEntry)
+        });
+    }
 }
 
 /**
