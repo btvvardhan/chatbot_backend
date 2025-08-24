@@ -1,11 +1,12 @@
+
+
 [build]
 functions = "netlify/functions"
 
 [functions]
-# Tell Netlify to use the Python runtime for functions
 node_bundler = "esbuild"
+# This is the correct way to specify the Python version for all functions
 python_version = "3.9"
 
-[functions."netlify/functions"]
-# Specify the path to your Python dependencies file
+[functions."*"]
 external_packages = ["requests", "firebase-admin"]
