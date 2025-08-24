@@ -1,73 +1,125 @@
-// This file contains functions to interact with Firestore.
-// It is used by the main chatbot function.
+// Server-side Firestore helper for Netlify Functions (CommonJS)
+//
+// Env var required on Netlify (Site settings → Environment variables):
+//   FIREBASE_CONFIG = stringified service account JSON from Firebase
+//
+// Example FIREBASE_CONFIG value:
+// {
+//   "type": "service_account",
+//   "project_id": "...",
+//   "private_key_id": "...",
+//   "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+//   "client_email": "...",
+//   "client_id": "...",
+//   ...
+// }
+//
+// Add dependency in your backend:
+//   npm i firebase-admin
 
-// Import Firebase Admin SDK to interact with Firestore securely on the server side
 const admin = require('firebase-admin');
 
-// We need to initialize the Firebase app. The credentials are provided via Netlify's environment variables.
-// It's a bit different from client-side setup. We get the config as a JSON string.
-// You will need to add a FIREBASE_CONFIG environment variable in Netlify.
-// Example: '{"type": "service_account", "project_id": "...", "private_key_id": "...", ...}'
+// Initialize once per lambda container
 if (!admin.apps.length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
+  if (!process.env.FIREBASE_CONFIG) {
+    throw new Error('FIREBASE_CONFIG is not set');
+  }
+  const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
+
+  // Netlify/CI often escape newlines in the private key:
+  if (serviceAccount.private_key && serviceAccount.private_key.includes('\\n')) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
 }
 
 const db = admin.firestore();
 
 /**
- * Saves a new message pair (user message and bot reply) to a conversation history.
- * @param {string} sessionId The unique session ID for the conversation.
- * @param {string} userMessage The user's message.
- * @param {string} botReply The bot's reply.
+ * Save one turn (user + bot) into a subcollection:
+ * chat_history/{sessionId}/messages/{autoId}
+ * Uses FieldValue.serverTimestamp() (valid here since it's not inside an array).
  */
 async function saveHistory(sessionId, userMessage, botReply) {
-    const docRef = db.collection('chat_history').doc(sessionId);
-    
-    // We get the document first to check if it exists
-    const doc = await docRef.get();
+  const colRef = db.collection('chat_history').doc(sessionId).collection('messages');
 
-    const newEntry = {
-        user: userMessage,
-        bot: botReply,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    // Check if the document exists to determine whether to set or update
-    if (!doc.exists) {
-        // If the document doesn't exist, create it with the first message.
-        // The transaction is handled by the set operation implicitly.
-        await docRef.set({
-            messages: [newEntry]
-        });
-    } else {
-        // If it exists, update it by atomically adding the new entry to the messages array.
-        // This is the correct use of FieldValue.arrayUnion() with serverTimestamp().
-        await docRef.update({
-            messages: admin.firestore.FieldValue.arrayUnion(newEntry)
-        });
-    }
+  await colRef.add({
+    user: userMessage,
+    bot: botReply,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Optionally maintain summary fields on the parent doc (not required)
+  const sessionRef = db.collection('chat_history').doc(sessionId);
+  await sessionRef.set(
+    {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      // (optionally) lastUserMessage: userMessage.slice(0, 500),
+    },
+    { merge: true }
+  );
 }
 
 /**
- * Retrieves the chat history for a given session ID.
- * @param {string} sessionId The unique session ID.
- * @returns {Array} An array of messages from the conversation.
+ * Read full ordered history (ascending by timestamp).
+ * Returns array of { user, bot, timestamp: Date|null }
  */
 async function getHistory(sessionId) {
-    const docRef = db.collection('chat_history').doc(sessionId);
-    const doc = await docRef.get();
-    
-    if (doc.exists) {
-        return doc.data().messages;
-    } else {
-        return [];
+  const colRef = db.collection('chat_history').doc(sessionId).collection('messages');
+  const snap = await colRef.orderBy('timestamp', 'asc').get();
+
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      user: data.user,
+      bot: data.bot,
+      timestamp: data.timestamp ? data.timestamp.toDate() : null,
+      _id: d.id,
+    };
+  });
+}
+
+/**
+ * Paged history: pass a pageSize and an optional cursor (doc id to start after).
+ * Returns { items, nextCursor }
+ */
+async function getHistoryPaged(sessionId, pageSize = 20, startAfterId = null) {
+  const colRef = db.collection('chat_history').doc(sessionId).collection('messages').orderBy('timestamp', 'asc');
+
+  let query = colRef.limit(pageSize);
+  if (startAfterId) {
+    const docRef = db.collection('chat_history').doc(sessionId).collection('messages').doc(startAfterId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      query = colRef.startAfter(docSnap).limit(pageSize);
     }
+  }
+
+  const snap = await query.get();
+  const items = snap.docs.map((d) => ({ _id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate() || null }));
+  const nextCursor = snap.docs.length === pageSize ? snap.docs[snap.docs.length - 1].id : null;
+  return { items, nextCursor };
+}
+
+/**
+ * Delete an entire session (careful!)
+ */
+async function deleteSession(sessionId) {
+  const colRef = db.collection('chat_history').doc(sessionId).collection('messages');
+  const snap = await colRef.get();
+  const batch = db.batch();
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(db.collection('chat_history').doc(sessionId));
+  await batch.commit();
 }
 
 module.exports = {
-    saveHistory,
-    getHistory
+  db,
+  saveHistory,
+  getHistory,
+  getHistoryPaged,
+  deleteSession,
 };
