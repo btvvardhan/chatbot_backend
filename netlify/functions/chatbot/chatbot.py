@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import asyncio
-from firestore_helper import save_history, get_history
+from .firestore_helper import save_history, get_history
 
 # This is the main handler for the serverless function.
 # It's called by Netlify when a request comes in.
@@ -22,6 +22,7 @@ def handler(event, context):
             'body': json.dumps({'error': 'API key is not configured.'})
         }
 
+    loop = None
     try:
         # Parse the JSON payload from the request body.
         body = json.loads(event['body'])
@@ -84,4 +85,5 @@ def handler(event, context):
             'body': json.dumps({'error': 'Failed to process the request.'})
         }
     finally:
-        loop.close()
+        if loop:
+            loop.close()

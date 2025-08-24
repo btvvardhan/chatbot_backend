@@ -3,10 +3,5 @@
 [build]
 functions = "netlify/functions"
 
-# [functions]
-# node_bundler = "esbuild"
-# # This is the correct way to specify the Python version for all functions
-# python_version = "3.9"
-
-# [functions."*"]
-# external_packages = ["requests", "firebase-admin"]
+[functions]
+python_version = "3.11"
