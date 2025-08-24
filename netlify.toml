@@ -1,11 +1,11 @@
-# This file is for Netlify configuration
 [build]
-  # The directory where your static files are located
-  publish = "/"
-  # The command Netlify runs to build your site (not needed for static sites)
-  command = "echo 'No build command specified'"
+functions = "netlify/functions"
 
-# This section configures serverless functions
 [functions]
-  # The path to your functions folder
-  directory = "netlify/functions/"
+# Tell Netlify to use the Python runtime for functions
+node_bundler = "esbuild"
+python_version = "3.9"
+
+[functions."netlify/functions"]
+# Specify the path to your Python dependencies file
+external_packages = ["requests", "firebase-admin"]
