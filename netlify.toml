@@ -1,11 +1,10 @@
-# This file is for Netlify configuration
-[build]
-  # The directory where your static files are located
-  publish = "/"
-  # The command Netlify runs to build your site (not needed for static sites)
-  command = "echo 'No build command specified'"
 
-# This section configures serverless functions
+
+[build]
+publish = "/"
+command = "echo 'No build command specified'"
+
+
 [functions]
-  # The path to your functions folder
-  directory = "netlify/functions/"
+directory = "netlify/functions/"
+included_files = ["documents/**"]
