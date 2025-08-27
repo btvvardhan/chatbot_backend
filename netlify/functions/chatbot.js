@@ -8,8 +8,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // API URL for Gemini's text generation model
 const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=" + GEMINI_API_KEY;
 
-// Import the Firestore helper functions we created
-const { getHistory, saveHistory } = require('./firestore');
+
+// In-memory chat history store (not persistent)
+const sessionHistories = {};
 
 // The main handler for the serverless function
 exports.handler = async function(event, context) {
@@ -30,14 +31,18 @@ exports.handler = async function(event, context) {
   }
 
   try {
+
     const { message, sessionId } = JSON.parse(event.body);
 
-    // Get the previous chat history from Firestore
-    let history = await getHistory(sessionId);
+    // Get or initialize session history
+    if (!sessionHistories[sessionId]) {
+      sessionHistories[sessionId] = [];
+    }
+    const history = sessionHistories[sessionId];
 
-    // Combine previous history and the new message to create a conversational prompt
+    // Build chat history string
     let chatHistory = "Previous conversation:\n";
-    if (history && history.length > 0) {
+    if (history.length > 0) {
       history.forEach(entry => {
         chatHistory += `User: ${entry.user}\nBot: ${entry.bot}\n`;
       });
@@ -74,8 +79,9 @@ exports.handler = async function(event, context) {
     // Extract the text from the Gemini response
     const botReply = result?.candidates?.[0]?.content?.parts?.[0]?.text || "No reply from the bot.";
 
-    // Save the user's message and the bot's reply to the database
-    await saveHistory(sessionId, message, botReply);
+
+    // Save the user's message and the bot's reply in memory
+    history.push({ user: message, bot: botReply });
 
     return {
       statusCode: 200,
