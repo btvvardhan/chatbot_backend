@@ -21,6 +21,13 @@ const store = {
   history: new Map(),    // sessionId -> [{ role: 'user'|'bot', text }]
 };
 
+const ORIGIN_WHITELIST = new Set([
+  "https://btvvardhan.github.io",   // your GitHub Pages origin
+  "http://localhost:4000",          // optional: Jekyll local preview
+  "http://127.0.0.1:4000"           // optional
+]);
+
+
 const SYSTEM_PROMPT = `You are a concise, helpful assistant for Teja Vishnu Vardhan Boddu.
 Use CONTEXT snippets to answer. If context is insufficient, state that briefly and proceed with your best answer.
 When using a snippet, lightly cite it like [filename].`;
