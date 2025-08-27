@@ -25,6 +25,18 @@ const SYSTEM_PROMPT = `You are a concise, helpful assistant for Teja Vishnu Vard
 Use CONTEXT snippets to answer. If context is insufficient, state that briefly and proceed with your best answer.
 When using a snippet, lightly cite it like [filename].`;
 
+
+// CORS — set this to your GitHub Pages origin
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://btvvardhan.github.io";
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+
+
+
 // ---------- helpers ----------
 function chunkText(text, size = 1000, overlap = 200) {
   const chunks = [];
@@ -150,26 +162,34 @@ async function generateWithContext(message, sessionId) {
 }
 
 // ---------- Netlify function handler ----------
+
+
+
 exports.handler = async (event) => {
   try {
+    // Preflight
+    if (event.httpMethod === 'OPTIONS') {
+      return { statusCode: 204, headers: CORS_HEADERS, body: "" };
+    }
+
     if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: 'Method Not Allowed' };
+      return { statusCode: 405, headers: CORS_HEADERS, body: 'Method Not Allowed' };
     }
     if (!GEMINI_API_KEY) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'Missing GEMINI_API_KEY' }) };
+      return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Missing GEMINI_API_KEY' }) };
     }
 
     const { message, sessionId } = JSON.parse(event.body || '{}');
     if (!message || !sessionId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Missing message or sessionId' }) };
+      return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Missing message or sessionId' }) };
     }
 
     await ensureIngested();
     const reply = await generateWithContext(message, sessionId);
 
-    return { statusCode: 200, body: JSON.stringify({ reply }) };
+    return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ reply }) };
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Failed to process request.' }) };
+    return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Failed to process request.' }) };
   }
 };
